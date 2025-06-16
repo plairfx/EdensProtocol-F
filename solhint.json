@@ -1,0 +1,5 @@
+json{
+  "rules": {
+    "private-vars-leading-underscore": "off"
+  }
+}

@@ -1,0 +1,15 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = [
+
+    '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
+    '@hyperlane/contracts/=lib/hyperlane-monorepo/solidity/contracts',
+    '@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/',
+    '@chainlink/contracts/=lib/chainlink/contracts',
+    '@chainlink-local/=lib/chainlink-local',
+
+]
+via-ir = true
+ffi = true
