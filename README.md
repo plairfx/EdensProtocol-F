@@ -51,5 +51,17 @@ https://github.com/plairfx/EdensProtocolFrontend
 
 Frontend link: finaledenp.vercel.app
 
+### Resources used to make this project
 
-Resources used to make this project a success
+Tornado cash rebuilt in a foundry repo:
+https://github.com/nkrishang/tornado-cash-rebuilt/tree/main/test
+
+Understanding TC in detail!
+https://www.rareskills.io/post/how-does-tornado-cash-work
+
+How to generate/create your ZKP:
+https://www.youtube.com/watch?v=3Gd3E92aBxk
+https://www.youtube.com/watch?v=ZuwUFN7m4AY&t=1174s
+
+This made my project an easier endeavour, as sharing resources might help other people but also give credit where its due!
+
