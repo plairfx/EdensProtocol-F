@@ -4,6 +4,8 @@ Eden’s protocol is a cross-chain privacy protocol which allows user to send an
 
 The vision was to make Eden's Protocol a cross-chain privacy bridge, which allows user to deposit and withdraw from every EVM chain, and even if there are no deposits the vault liquidity can be used still let it function as a bridge.
 
+![image](https://github.com/user-attachments/assets/86b216b0-730e-4c34-8d8d-4999f7c84e92)
+
 ## How does it work?
 
 Whenever a user deposits it will create a deposit proof for the user to withdraw with
@@ -18,9 +20,9 @@ If he deposits or withdraws on a non-evm chain, he will send a CCIP message ([Ed
 
 The mainnet Pool [(EdenPL.soL)](https://github.com/plairfx/EdensProtocol-F/blob/main/src/EdenPL.sol) will send a message with CCIP back with the results, if the withdrwaw is successfull the user will receive his deposit-amount, if it fails a withdrawFailed or depositFailed event will be emitted.
 
-![image](https://github.com/user-attachments/assets/86b216b0-730e-4c34-8d8d-4999f7c84e92)
+![image](https://github.com/user-attachments/assets/8d428ce4-631d-4bef-ab73-2179670966ac)
 
-## This smart contract repo exist of 3 main contract:
+## This smart contract repo exist of 5 main contract:
 
 ### **[EdenPL.sol](https://github.com/plairfx/EdensProtocol-F/blob/main/src/EdenPL.sol):**
 The Pool contract deployed on the Ethereum mainnet for every token (eth,link,) etc.. whenever an EVM chain wants to withdraw/deposit it will receive a message. This goes through Chainlink’s CCIP.
@@ -37,9 +39,7 @@ The contract used to verify the proofs onchain.
 ## **MerkleTreeWitHistory**:
 The merkle tree used to make the storing commitments and help verify the withdraws.
 
-
-![image](https://github.com/user-attachments/assets/8d428ce4-631d-4bef-ab73-2179670966ac)
-
+---------------------------------------------------------------------------------------
 
 Note:
 This is a non audited code with known issues.
