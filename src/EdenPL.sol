@@ -21,17 +21,19 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
     error InvalidProof();
     error UninitializedChain();
 
-    address public asset;
+    address asset;
     address immutable i_router;
     address vault;
     uint256 feeAccumulated;
 
-    mapping(uint64 => address) private s_destAddress;
+    mapping(uint64 => address) public s_destAddress;
     mapping(bytes32 => bool) public nullifierHashes;
     mapping(bytes32 hashie => bool) public commitments;
 
-    event Deposit();
-    event Withdraw();
+    event Deposited(bytes32 commitment, uint256 amount, uint256 index, uint64 chain, bytes32 MessageId, address _asset);
+    event Withdrawn(address receiver, uint256 amount, uint64 chain, bytes32 MessageId, address _asset);
+    event DepositFailed(address refundReceiver, uint256 amount, bytes32 MessageID);
+    event WithdrawFailed(address receiver, uint256 amount, bytes32 MessageID);
 
     modifier onlyVault() {
         require(msg.sender == vault);
@@ -71,6 +73,7 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
         returns (uint256 index)
     {
         require(!commitments[_commitment], "Commitment already submitted");
+        require(amount > 0);
 
         uint256 index = _insert(_commitment);
 
@@ -80,10 +83,12 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
             IERC20(asset).safeTransferFrom(msg.sender, address(this), amount + fee);
             feeAccumulated += fee;
         } else {
-            // something weird happenss
-            require(amount == (msg.value - fee));
+            require(msg.value >= amount + fee);
+
             feeAccumulated += fee;
         }
+
+        emit Deposited(_commitment, amount, index, 0, bytes32(0), asset);
     }
 
     /**
@@ -130,6 +135,8 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
         nullifierHashes[nullifierHash] = true;
 
         _withdraw(amount, receiver, fee);
+
+        emit Withdrawn(receiver, amount, 0, bytes32(0), asset);
     }
 
     // /**
@@ -202,7 +209,7 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
         s_destAddress[_destinationChain] = dest_address;
     }
 
-    function _checkDestinationDomain(uint64 _destinationChain) public returns (address, bool) {
+    function _checkDestinationDomain(uint64 _destinationChain) internal returns (address, bool) {
         address destAddress = s_destAddress[_destinationChain];
         require(destAddress != address(0), "Destination address not registered");
         return (destAddress, true);
@@ -229,13 +236,15 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
      */
     function _edDeposit(UserDW.Withdraw memory withdraw, uint64 orgChain) internal returns (uint256 index) {
         (address _destinationAddress, bool valid) = _checkDestinationDomain(orgChain);
-
+        require(_destinationAddress == withdraw.senderPool, "Wrong destAddr");
         if (_destinationAddress == address(0x0) || commitments[withdraw.commitment]) {
             withdraw.depositW = false;
 
             bytes memory _payload = abi.encode(withdraw);
 
-            _send(orgChain, _destinationAddress, _payload);
+            bytes32 _messageId = _send(orgChain, _destinationAddress, _payload);
+
+            emit DepositFailed(withdraw.receiver, withdraw.amount, _messageId);
         } else {
             uint256 index = _insert(withdraw.commitment);
 
@@ -245,7 +254,9 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
 
             bytes memory _payload = abi.encode(withdraw);
 
-            _send(orgChain, _destinationAddress, _payload);
+            bytes32 _messageId = _send(orgChain, _destinationAddress, _payload);
+
+            emit Deposited(withdraw.commitment, withdraw.amount, index, orgChain, _messageId, asset);
         }
     }
 
@@ -256,7 +267,7 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
      */
     function _edWithdraw(UserDW.Withdraw memory withdraw, uint64 orgChain) internal returns (bool) {
         (address _destinationAddress, bool valid) = _checkDestinationDomain(orgChain);
-
+        require(_destinationAddress == withdraw.senderPool, "Wrong destAddr");
         if (
             nullifierHashes[withdraw.nullifierHash] || !isKnownRoot(withdraw.root)
                 || !verifier.verifyProof(
@@ -279,7 +290,9 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
 
             bytes memory _payload = abi.encode(withdraw);
 
-            _send(orgChain, _destinationAddress, _payload);
+            bytes32 messageID = _send(orgChain, _destinationAddress, _payload);
+
+            emit WithdrawFailed(withdraw.receiver, withdraw.amount, messageID);
         } else {
             nullifierHashes[withdraw.nullifierHash] = true;
 
@@ -288,15 +301,18 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
 
             bytes memory _payload = abi.encode(withdraw);
 
-            _send(orgChain, _destinationAddress, _payload);
+            bytes32 _messageId = _send(orgChain, _destinationAddress, _payload);
+
+            emit Withdrawn(withdraw.receiver, withdraw.amount, orgChain, _messageId, asset);
         }
     }
 
     /**
-     * @notice returns the vault address.
+     * @notice returns the asset address.
+     * address(0x0) means native token!
      */
-    function getVault() public view returns (address) {
-        return vault;
+    function getAsset() public view returns (address) {
+        return asset;
     }
 
     /**
@@ -315,5 +331,12 @@ contract EdenPL is CCIPReceiver, Ownable, MerkleTreeWithHistory, ReentrancyGuard
         } else {
             return address(this).balance;
         }
+    }
+
+    /**
+     * @notice returns the vault address.
+     */
+    function getVault() public view returns (address) {
+        return vault;
     }
 }

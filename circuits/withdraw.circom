@@ -13,12 +13,12 @@ template CommitmentHasher() {
     
     // Adjust Pedersen hasher to include amount bits
     // Assuming amount requires 64 bits, adjust as needed for your use case
-    component commitmentHasher = Pedersen(248 + 248 + 64);
+    component commitmentHasher = Pedersen(248 + 248 + 72);
     component nullifierHasher = Pedersen(248);
     
     component nullifierBits = Num2Bits(248);
     component secretBits = Num2Bits(248);
-    component amountBits = Num2Bits(64);
+    component amountBits = Num2Bits(72);
     
     nullifierBits.in <== nullifier;
     secretBits.in <== secret;
@@ -31,7 +31,7 @@ template CommitmentHasher() {
     }
     
     // Add amount bits to commitment hash
-    for (var i = 0; i < 64; i++) {
+    for (var i = 0; i < 72; i++) {
         commitmentHasher.in[i + 496] <== amountBits.out[i];
     }
     

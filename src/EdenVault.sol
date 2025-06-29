@@ -116,7 +116,7 @@ contract EdenVault is ERC20, ReentrancyGuard {
     /**
      * @notice gets called to receive the fees  from the set Pool if there any.
      * @dev  checks to see if the fees are higher than 0, if so the vault will call `getFeesAccumulated`
-     * to receive the fees, this happens so the user depositing/withdrawnig will always get the full amount + fees the vault has earned.
+     * to receive the fees, this happens so the user depositing/withdrawing will always get the full amount + fees the vault has earned.
      */
     function getAccumulatedFees() internal returns (uint256 fees) {
         uint256 fees = IEdenPL(pool).getFeesAccumulated();

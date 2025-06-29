@@ -17,42 +17,39 @@ async function main() {
   const nullifier = hexToBigint(inputs[0]);
   const secret = hexToBigint(inputs[1]);
   const amount = hexToBigint(inputs[2]);
-  
+
   // 2. Get nullifier hash
   const nullifierHash = await pedersenHash(leBigintToBuffer(nullifier, 31));
-  
+
   // 3. Create merkle tree, insert leaves and get merkle proof for commitment
 
   // Get leaves from inputs (starting from the 7th argument)
-
 
   const commitment = await pedersenHash(
     Buffer.concat([
       leBigintToBuffer(nullifier, 31),
       leBigintToBuffer(secret, 31),
-      leBigintToBuffer(amount, 8),
+      leBigintToBuffer(amount, 9),
     ])
   );
-  
-  const leaves = inputs.slice(7 , inputs.length).map((l) => hexToBigint(l));
+
+  const leaves = inputs.slice(7, inputs.length).map((l) => hexToBigint(l));
 
   const tree = await mimicMerkleTree(leaves);
 
-  
   const merkleProof = tree.proof(commitment);
-  
+
   // 4. Format witness input to exactly match circuit expectations
   const input = {
     // Public inputs  // check
-    root: merkleProof.pathRoot, 
+    root: merkleProof.pathRoot,
     nullifierHash: nullifierHash,
     amount: amount,
     recipient: hexToBigint(inputs[3]),
     relayer: hexToBigint(inputs[4]),
- 
+
     fee: BigInt(inputs[5]),
     refund: BigInt(inputs[6]),
-
 
     // Private inputs // check
     nullifier: nullifier,
@@ -60,21 +57,28 @@ async function main() {
     pathElements: merkleProof.pathElements.map((x) => x.toString()),
     pathIndices: merkleProof.pathIndices,
   };
-  
+
   // 5. Create groth16 proof for witness
   const { proof } = await snarkjs.groth16.fullProve(
     input,
     path.join(__dirname, "../outputs/withdraw_js/withdraw.wasm"),
     path.join(__dirname, "../outputs/withdraw.zkey")
   );
-  
+
   const pA = proof.pi_a.slice(0, 2);
   const pB = proof.pi_b.slice(0, 2);
   const pC = proof.pi_c.slice(0, 2);
-  
+
   // 6. Return abi encoded witness
   const witness = ethers.utils.defaultAbiCoder.encode(
-    ["uint256[2]", "uint256[2][2]", "uint256[2]",  "bytes32", "bytes32", "bytes32"],
+    [
+      "uint256[2]",
+      "uint256[2][2]",
+      "uint256[2]",
+      "bytes32",
+      "bytes32",
+      "bytes32",
+    ],
     [
       pA,
       // Swap x coordinates: this is for proof verification with the Solidity precompile for EC Pairings, and not required
@@ -89,7 +93,7 @@ async function main() {
       bigintToHex(amount),
     ]
   );
-  
+
   return witness;
 }
 

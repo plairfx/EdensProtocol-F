@@ -14,6 +14,8 @@ import {
     BurnMintERC677Helper
 } from "@chainlink-local/src/ccip/CCIPLocalSimulator.sol";
 import {Client} from "lib/chainlink/contracts/src/v0.8/ccip/libraries/Client.sol";
+import {CCIPReceiver} from "lib/chainlink/contracts/src/v0.8/ccip/applications/CCIPReceiver.sol";
+import {FakeCCIP} from "./FakeCCIPMessager.sol";
 
 pragma solidity ^0.8.23;
 
@@ -41,6 +43,7 @@ contract EdenPLTest is Test {
 
     // Bridge
     CCIPLocalSimulator CCIP;
+    FakeCCIP FCCIP;
 
     address alice = makeAddr("alice");
     address public mimcHasher;
@@ -70,6 +73,8 @@ contract EdenPLTest is Test {
         // Deploy CCIP Simulator
         CCIP = new CCIPLocalSimulator();
 
+        FCCIP = new FakeCCIP();
+
         (
             uint64 chainSelector,
             IRouterClient sourceRouter,
@@ -78,6 +83,8 @@ contract EdenPLTest is Test {
             LinkToken link,
             BurnMintERC677Helper ccipBnM,
         ) = CCIP.configuration();
+
+        console.log(address(destinationRouter));
 
         // Deploy ERC20Mock & Mint tokens & ETH
         ERC20 = new ERC20Mock();
@@ -365,6 +372,8 @@ contract EdenPLTest is Test {
 
         vm.startPrank(alice);
         ERC20.approve(address(EPLERC20), 1 ether);
+        vm.expectEmit(true, true, true, true);
+        emit EdenPL.Deposited(commitment, amount, 0, 0, bytes32(0), address(ERC20));
         EPLERC20.deposit(commitment, 1 ether, 0);
 
         assertEq(balancePoolB + 1 ether, ERC20.balanceOf(address(EPLERC20)));
@@ -391,8 +400,11 @@ contract EdenPLTest is Test {
         uint256 balanceAliceAfterD = ERC20.balanceOf(address(alice));
 
         vm.expectRevert(EdenPL.InvalidProof.selector);
+
         EPLERC20.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0, relayer, amount + 10 ether);
 
+        vm.expectEmit(true, true, true, true);
+        emit EdenPL.Withdrawn(address(alice), amount, 0, bytes32(0), address(ERC20));
         EPLERC20.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0, relayer, amount);
 
         assertEq(0, ERC20.balanceOf(address(EPLERC20)));
@@ -551,11 +563,7 @@ contract EdenPLTest is Test {
         uint256 balanceBeforeDeposit = address(alice).balance;
         uint256 balanceFeeVaultBeforeDeposit = address(EdenETH).balance;
 
-        // now we deposit on the EdenETH
-
         vm.startPrank(alice);
-        vm.expectRevert();
-        EPL.deposit{value: amount + fee}(commitment, 4 ether, fee);
 
         EPL.deposit{value: amount + fee}(commitment, amount, fee);
 
@@ -585,48 +593,129 @@ contract EdenPLTest is Test {
         EPL.withdraw(pA, pB, pC, nullifierHash, address(alice), bytes32(0x0), 0, relayer, amount);
     }
 
-    // function test_withdrawFailsForContractWithNoReceive() public {
-    //     uint256 amount = 1 ether;
-    //     (bytes32 commitment, bytes32 nullifier, bytes32 amountie, bytes32 secret) = _getCommitment(amount);
+    function test_WithdrawDoesNotRevertAt19Etherand19Tokens() public {
+        uint256 amount = 100 ether;
+        uint256 balanceAliceBefore = alice.balance;
+        (bytes32 commitment, bytes32 nullifier, bytes32 amountie, bytes32 secret) = _getCommitment(amount);
+        vm.deal(address(alice), 100 ether);
 
-    //     vm.startPrank(alice);
-    //     EPL.deposit{value: 1 ether}(commitment, 1 ether, 0);
+        vm.startPrank(alice);
+        EPL.deposit{value: 100 ether}(commitment, amount, 0);
+        assertEq(alice.balance, balanceAliceBefore - 100 ether);
 
-    //     bytes32[] memory leaves = new bytes32[](1);
-    //     leaves[0] = commitment;
+        bytes32[] memory leaves = new bytes32[](1);
+        leaves[0] = commitment;
+    }
 
-    //     (
-    //         uint256[2] memory pA,
-    //         uint256[2][2] memory pB,
-    //         uint256[2] memory pC,
-    //         bytes32 root,
-    //         bytes32 nullifierHash,
-    //         bytes32 amountiee
-    //     ) = _getWitnessAndProof(nullifier, secret, bytes32(amountie), address(receiver), relayer, leaves);
+    function test_getAssetWorks() public {
+        address ETH = EPL.getAsset();
+        address TOKEN = EPLERC20.getAsset();
 
-    //     assertTrue(
-    //         verifier.verifyProof(
-    //             pA,
-    //             pB,
-    //             pC,
-    //             [
-    //                 uint256(root),
-    //                 uint256(nullifierHash),
-    //                 uint256(amount),
-    //                 uint256(uint160(address(receiver))),
-    //                 uint256(uint160(relayer)),
-    //                 uint256(0),
-    //                 uint256(0)
-    //             ]
-    //         )
-    //     );
-    //     uint256 balanceBefore = alice.balance;
-    //     uint256 balanceBeforeEPL = address(EPL).balance;
+        assertEq(ETH, address(0x0));
+        assertEq(TOKEN, address(ERC20));
+    }
 
-    //     vm.startPrank(address(receiver));
-    //     vm.expectRevert();
-    //     EPL.withdraw(pA, pB, pC, nullifierHash, address(receiver), root, 0, relayer, amount);
-    // }
+    function test_WhenWithdrawIsEmptyVaultWillFulfillLiquidity() public {
+        // ETH VAULT
+        vm.deal(address(EdenETH), 10 ether);
+
+        uint256 balanceVault = address(EdenETH).balance;
+
+        uint256 amount = 1 ether;
+        (bytes32 commitment, bytes32 nullifier, bytes32 amountie, bytes32 secret) = _getCommitment(amount);
+
+        vm.startPrank(alice);
+        EPL.deposit{value: 1 ether}(commitment, 1 ether, 0);
+
+        uint256 balanceEPL = address(EPL).balance;
+        vm.startPrank(address(EPL));
+        // EPL will send balance away in this example..
+        address(bob).call{value: balanceEPL}("");
+
+        assertEq(address(EPL).balance, 0 ether);
+
+        vm.startPrank(alice);
+
+        bytes32[] memory leaves = new bytes32[](1);
+        leaves[0] = commitment;
+
+        (
+            uint256[2] memory pA,
+            uint256[2][2] memory pB,
+            uint256[2] memory pC,
+            bytes32 root,
+            bytes32 nullifierHash,
+            bytes32 amountiee
+        ) = _getWitnessAndProof(nullifier, secret, bytes32(amount), address(alice), relayer, leaves);
+
+        EPL.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0, relayer, amount);
+
+        assertEq(address(EdenETH).balance, balanceVault - 1 ether);
+    }
+
+    function test_WhenCrossChainDepositErrorsItWillSendBackMoney() public {
+        vm.deal(address(FCCIP), 10 ether);
+        uint256 amount = 1 ether;
+        (bytes32 commitment, bytes32 nullifier, bytes32 amountie, bytes32 secret) = _getCommitment(amount);
+
+        vm.startPrank(alice);
+        EPL.deposit{value: 1 ether}(commitment, 1 ether, 0);
+
+        uint256 aliceBalance = alice.balance;
+        // User cannot deposit with the same commitment..
+        EVPL.deposit{value: 1 ether}(commitment, 1 ether, 0);
+
+        assertEq(aliceBalance, alice.balance);
+        // now we have to test a fake message from a fake address.
+        UserDW.Withdraw memory DW;
+
+        DW.withdraw = false;
+
+        bytes memory data = abi.encode(DW);
+
+        vm.expectRevert();
+
+        FCCIP.send(0, address(EPL), data);
+    }
+
+    function test_whenCrossChainWithdrawsItWillFail() public {
+        vm.deal(address(FCCIP), 10 ether);
+        uint256 amount = 1 ether;
+        (bytes32 commitment, bytes32 nullifier, bytes32 amountie, bytes32 secret) = _getCommitment(amount);
+        uint256 balanceBeforeDeposit = alice.balance;
+        vm.startPrank(alice);
+        EPL.deposit{value: 1 ether}(commitment, 1 ether, 0);
+        vm.deal(address(EVPL), 10 ether);
+
+        bytes32[] memory leaves = new bytes32[](1);
+        leaves[0] = commitment;
+
+        (
+            uint256[2] memory pA,
+            uint256[2][2] memory pB,
+            uint256[2] memory pC,
+            bytes32 root,
+            bytes32 nullifierHash,
+            bytes32 amountiee
+        ) = _getWitnessAndProof(nullifier, secret, bytes32(amount), address(alice), relayer, leaves);
+
+        EVPL.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0 ether, relayer, 1 ether);
+        assertEq(balanceBeforeDeposit, alice.balance);
+
+        EVPL.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0 ether, relayer, 1 ether);
+        // the balance stays the same, but it does not revert.
+        assertEq(balanceBeforeDeposit, alice.balance);
+
+        UserDW.Withdraw memory DW;
+
+        DW.withdraw = false;
+
+        bytes memory data = abi.encode(DW);
+
+        vm.expectRevert();
+
+        FCCIP.send(0, address(EPL), data);
+    }
 }
 
 contract Receiver {}

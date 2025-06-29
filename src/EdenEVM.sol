@@ -15,21 +15,12 @@ import {Client} from "lib/chainlink/contracts/src/v0.8/ccip/libraries/Client.sol
 contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // Errors
-    error InvalidProof();
-
     uint64 immutable i_destChain;
     address immutable i_router;
     address immutable i_destAddress;
     address asset;
     uint256 feeAccumulated;
     address vault;
-
-    // Events
-    event Deposit();
-    event Withdraw();
-    event DepositFailed(uint256 amount, uint256 fee);
-    event WithdrawFailed();
 
     modifier onlyVault() {
         require(msg.sender == vault);
@@ -57,7 +48,7 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
      * sends message to _deposit with confirmations.
      * @param _commitment The generated commitment, cannot be used twice.
      * @param amount The amount to deposit
-     * @param fee The fee the user pays for the front-end.
+     * @param fee The fee the user pays for the vault.
      * @return index
      */
     function deposit(bytes32 _commitment, uint256 amount, uint256 fee)
@@ -69,18 +60,26 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
         if (asset == address(0x0)) {
             require(msg.value >= amount + fee, "Msg.value should be equal/more then amount+fee");
         }
+        require(amount > 0, "Amount should be more than 0");
 
         UserDW.Withdraw memory DE;
         DE.amount = amount;
         DE.commitment = _commitment;
         DE.receiver = msg.sender;
         DE.fee = fee;
+        DE.senderPool = address(this);
 
         bytes memory _payload = abi.encode(DE);
 
+        uint256 CCIPfee = getCCIPFee(_payload);
+        if (asset != address(0x0)) {
+            require(msg.value >= CCIPfee, "MSG.value should be equal to CCIpFee");
+        } else {
+            require(msg.value >= amount + CCIPfee, "msg.value should be more than amount and fee");
+        }
         if (asset != address(0x0)) {
             IERC20(asset).safeTransferFrom(msg.sender, address(this), amount + fee);
-        } // fee transfer should only happen when the transfers
+        }
 
         _send(i_destChain, _payload);
     }
@@ -120,7 +119,8 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
             amount: _amount,
             withdraw: true,
             commitment: bytes32(0x0),
-            depositW: false
+            depositW: false,
+            senderPool: address(this)
         });
 
         bytes memory _payload = abi.encode(myStruct);
@@ -165,7 +165,7 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
                 // resetting
                 feeAccumulated = 0;
             }
-        } else {}
+        }
     }
 
     /**
@@ -176,9 +176,10 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice rhandles the withdraw message received from the main-chain.
+     * @notice handles the withdraw message received from the main-chain.
      * @dev if the withdraw is correctly handled it will send the fees else emit WithdrawFailed` event.
      */
+    // No scenario made where the contract could be empty.
     function _withdraw(uint256 amount, address receiver, uint256 fee, bool success)
         internal
         returns (uint256 withdrawnAmount)
@@ -190,15 +191,11 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
             if (asset != address(0x0)) {
                 IERC20(asset).safeTransfer(receiver, amount);
                 feeAccumulated += fee;
-                emit Withdraw();
             } else {
                 (bool success2,) = receiver.call{value: amount - fee}("");
                 require(success2);
                 feeAccumulated += fee;
-                emit Withdraw();
             }
-        } else {
-            emit WithdrawFailed();
         }
     }
 
@@ -219,19 +216,46 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
     function _deposit(bytes32 _commitment, uint256 amount, uint256 fee, bool success, address receiver) internal {
         if (success) {
             feeAccumulated += fee;
-            emit Deposit();
         } else {
             if (asset == address(0x0)) {
                 (bool success,) = receiver.call{value: amount + fee}("");
                 require(success);
-                emit DepositFailed(amount, fee);
             } else {
                 IERC20(asset).safeTransfer(receiver, amount + fee);
-                emit DepositFailed(amount, fee);
             }
         }
     }
+    /**
+     * @notice returns the asset address.
+     * address(0x0) means native token!
+     */
 
+    function getAsset() public view returns (address) {
+        return asset;
+    }
+
+    function getCCIPFee(bytes memory _data) public view returns (uint256 ccipFee) {
+        Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
+            receiver: abi.encode(i_destAddress),
+            data: _data,
+            tokenAmounts: new Client.EVMTokenAmount[](0),
+            extraArgs: Client._argsToBytes(Client.GenericExtraArgsV2({gasLimit: 1_000_000, allowOutOfOrderExecution: true})),
+            feeToken: address(0)
+        });
+
+        ccipFee = IRouterClient(i_router).getFee(i_destChain, message);
+    }
+
+    /**
+     * @notice returns the `feeAccumulated`.
+     */
+    function getFeesAccumulated() public view returns (uint256) {
+        return feeAccumulated;
+    }
+
+    /**
+     * @notice returns the `totalBalance`.
+     */
     function getTotalBalance() internal view returns (uint256) {
         if (asset != address(0x0)) {
             return IERC20(asset).balanceOf(address(this));
@@ -245,12 +269,5 @@ contract EdenEVM is CCIPReceiver, Ownable, ReentrancyGuard {
      */
     function getVault() public view returns (address) {
         return vault;
-    }
-
-    /**
-     * @notice returns the `feeAccumulated`.
-     */
-    function getFeesAccumulated() public view returns (uint256) {
-        return feeAccumulated;
     }
 }

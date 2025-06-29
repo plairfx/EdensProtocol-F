@@ -5,11 +5,6 @@ import {EdenPL, IHasher, IVerifier, UserDW} from "../src/EdenPL.sol";
 import {EdenEVM} from "../src/EdenEVM.sol";
 import {Groth16Verifier} from "../src/verifier.sol";
 import {EdenVault} from "../src/EdenVault.sol";
-import {
-    MockHyperlaneEnvironment,
-    MockMailbox,
-    TypeCasts
-} from "lib/hyperlane-monorepo/solidity/contracts/mock/MockHyperlaneEnvironment.sol";
 
 pragma solidity ^0.8.23;
 
@@ -24,12 +19,24 @@ contract DeployScript is Script {
     address constant baseSepoliaMailbox = 0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93;
 
     uint64 constant EthSepoliaChainId = 16015286601757825753;
-    address constant destinationAddresLinkToken = 0x2C0f9385a3Cb6E0d17b7db1C489bEB233A8c6e7c;
-    address constant destinationAddressETHToken = 0xd5C65F9c5e6CCBBD5400FA599b71A1f44EEad717;
+    address constant destinationETHAddresLinkToken = 0xD90f34B559C7b964cb705c5cadaCb682950324f9;
+
+    address constant ethSepoliaLinkToken = 0x779877A7B0D9E8603169DdbD7836e478b4624789;
+
+    address constant destinationAddressETHToken = 0x4418Ba6d81b2C3C031A969203d26A49bB8055d20;
 
     address constant linkSepolia = 0x779877A7B0D9E8603169DdbD7836e478b4624789;
     address constant linkBase = 0xE4aB69C077896252FAFBD49EFD26B5D171A32410;
 
+    address constant avaxLink = 0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846;
+    address constant avalancheRouter = 0xF694E193200268f9a4868e4Aa017A0118C9a8177;
+
+    
+
+    // Lets go again, our last run!
+    // ETH SEPOLIA FIRST
+
+    //
     function run() external {
         if (block.chainid == 11155111) {
             vm.startBroadcast();
@@ -49,11 +56,21 @@ contract DeployScript is Script {
 
             verifier = new Groth16Verifier();
 
-            EPL = new EdenPL(IVerifier(address(verifier)), IHasher(mimcHasher), address(0x0), 20, ethsepoliaMailbox);
+            EPL = new EdenPL(
+                IVerifier(address(verifier)), IHasher(mimcHasher), address(ethSepoliaLinkToken), 20, ethsepoliaMailbox
+            );
         } else if (block.chainid == 84532) {
             vm.startBroadcast();
 
-            EVPL = new EdenEVM(address(0x0), address(baseSepoliaMailbox), EthSepoliaChainId, destinationAddressETHToken);
-        } else {}
+            EVPL = new EdenEVM(
+                address(linkBase), address(baseSepoliaMailbox), EthSepoliaChainId, destinationETHAddresLinkToken
+            );
+        } else {
+            vm.startBroadcast();
+
+            EVPL = new EdenEVM(
+                address(avaxLink), address(avalancheRouter), EthSepoliaChainId, destinationETHAddresLinkToken
+            );
+        }
     }
 }

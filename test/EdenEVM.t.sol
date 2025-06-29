@@ -154,8 +154,6 @@ contract EdenEVMTest is Test {
         assertEq(aliceBalanceStart, alice.balance);
     }
 
-    function test_DepositAndWithdrawWorksWithoutMessageBack() public {}
-
     function test_msgvalueCannotBeLessThanAmountPlusFee() public {
         vm.startPrank(alice);
         vm.expectRevert();
@@ -302,8 +300,43 @@ contract EdenEVMTest is Test {
 
         EVMERC20.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0 ether, relayer, 9 ether);
 
-        // assertEq(feeAmount, ERC20.balanceOf(feeReceiver));
+        assertEq(balanceBeforeDeposit - 1 ether, ERC20.balanceOf(alice));
+
+        assertEq(EVMERC20.getFeesAccumulated(), 1 ether);
     }
+
+    // function test_crossChainDepositsETHAnWithdrawsWorks() {
+    //     console.log(address(ERC20));
+    //     vm.deal(address(EVPL), 5 ether);
+    //     vm.deal(address(EPL), 5 ether);
+    //     vm.deal(address(alice), 5 ether);
+
+    //     uint256 amount = 9 ether;
+    //     uint256 feeAmount = 1 ether;
+    //     uint256 balanceBeforeDeposit = ERC20.balanceOf(alice);
+
+    //     (bytes32 commitment, bytes32 nullifier, bytes32 amountie, bytes32 secret) = _getCommitment(amount);
+
+    //     vm.startPrank(alice);
+
+    //     EVMERC20.deposit(commitment, amount, feeAmount);
+
+    //     bytes32[] memory leaves = new bytes32[](1);
+    //     leaves[0] = commitment;
+
+    //     (
+    //         uint256[2] memory pA,
+    //         uint256[2][2] memory pB,
+    //         uint256[2] memory pC,
+    //         bytes32 root,
+    //         bytes32 nullifierHash,
+    //         bytes32 amountiee
+    //     ) = _getWitnessAndProof(nullifier, secret, bytes32(amountie), address(alice), relayer, leaves);
+
+    //     EVMERC20.withdraw(pA, pB, pC, nullifierHash, address(alice), root, 0 ether, relayer, 9 ether);
+
+    //     assertEq(EVMERC20.getFeesAccumulated(), 1 ether);
+    // }
 
     function test_When_CrossChainCommitmentsISAlreadyUsedUserGetsRefund() public {
         console.log(address(ERC20));
@@ -346,4 +379,14 @@ contract EdenEVMTest is Test {
         vm.startPrank(address(EdenETHEVM));
         EVPL.depositFees();
     }
+
+    function test_getAssetWorks() public {
+        address ETH = EVPL.getAsset();
+        address TOKEN = EPLERC20.getAsset();
+
+        assertEq(ETH, address(0x0));
+        assertEq(TOKEN, address(ERC20));
+    }
+
+    function test_ERC20GetsWithdrawnFine() public {}
 }

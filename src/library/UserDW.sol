@@ -16,5 +16,6 @@ library UserDW {
         bool withdraw;
         bytes32 commitment;
         bool depositW;
+        address senderPool;
     }
 }
